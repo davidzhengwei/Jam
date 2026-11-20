@@ -1,0 +1,24 @@
+appId: local.jam.portable
+productName: Jam
+icon: build/icon.ico
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+  - "!node_modules/**"
+extraResources:
+  - from: build/icon.ico
+    to: icon.ico
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+  artifactName: Jam-${version}-portable.exe
+portable:
+  artifactName: Jam-${version}-portable.exe
+  requestExecutionLevel: user
+compression: normal

@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>MyNotes · 三套界面风格样张</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root{
+    --serif: 'Source Han Serif SC','Noto Serif SC','Songti SC','STSong','SimSun',serif;
+    --sans: 'PingFang SC','Microsoft YaHei UI','Microsoft YaHei','Segoe UI',sans-serif;
+    --mono: 'Cascadia Code','JetBrains Mono',Consolas,'Courier New',monospace;
+  }
+  body{
+    background:#eceae5;
+    font-family:var(--sans);
+    color:#1b1d21;
+    padding:44px 28px 80px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+  .page-head{margin-bottom:34px;border-bottom:1px solid #d5d1c8;padding-bottom:22px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#8a8578}
+  .page-head h1{font-family:var(--serif);font-size:34px;font-weight:600;letter-spacing:-.01em;margin:10px 0 8px}
+  .page-head p{color:#5e5a51;font-size:14px;line-height:1.75;max-width:720px}
+
+  .pick{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:26px 0 46px}
+  .pick a{
+    display:block;text-decoration:none;color:inherit;background:#f7f5f0;border:1px solid #dcd8cf;
+    border-radius:10px;padding:14px 15px;transition:transform .18s cubic-bezier(.22,1,.36,1),box-shadow .18s;
+  }
+  .pick a:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(30,26,20,.10)}
+  .pick b{font-size:15px;display:block;margin-bottom:3px}
+  .pick span{font-size:12.5px;color:#6b665c;line-height:1.6}
+  .sw{display:flex;gap:5px;margin-top:10px}
+  .sw i{width:16px;height:16px;border-radius:3px;display:block;border:1px solid rgba(0,0,0,.08)}
+
+  .variant{margin-bottom:66px}
+  .v-head{display:flex;align-items:baseline;gap:14px;margin-bottom:14px}
+  .v-tag{font-family:var(--mono);font-size:11px;letter-spacing:.14em;padding:4px 8px;border:1px solid currentColor;border-radius:4px;opacity:.75}
+  .v-head h2{font-size:20px;font-weight:600;letter-spacing:-.01em}
+  .v-head em{font-style:normal;font-size:13px;color:#6b665c}
+
+  /* ============ 通用 mock 骨架 ============ */
+  .mock{
+    display:grid;grid-template-columns:194px 1px 228px 1px 1fr;
+    height:492px;border-radius:10px;overflow:hidden;font-size:13px;
+    position:relative;
+  }
+  .mock .side,.mock .mid,.mock .main{overflow:hidden;position:relative}
+  .mock .div{width:1px;height:100%}
+  .colhead{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 12px 9px 15px;
+  }
+  .colhead.mini{padding:11px 12px 7px 15px}
+  .colhead .t{font-size:11px;letter-spacing:.09em;text-transform:uppercase;opacity:.55}
+  .colhead .plus{width:16px;height:16px;position:relative;opacity:.5}
+  .colhead .plus::before,.colhead .plus::after{content:'';position:absolute;background:currentColor;left:50%;top:50%}
+  .colhead .plus::before{width:11px;height:1px;transform:translate(-50%,-50%)}
+  .colhead .plus::after{width:1px;height:11px;transform:translate(-50%,-50%)}
+
+  .nb{display:flex;align-items:center;gap:8px;padding:7px 12px;margin:0 7px 1px;border-radius:5px;position:relative}
+  .nb .dot{width:5px;height:5px;border-radius:50%;flex:none;opacity:.45}
+  .nb .nm{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .nb .n{font-family:var(--mono);font-size:10.5px;opacity:.4}
+  .nb.on{font-weight:600}
+  .nb.on .dot{opacity:1}
+  .side .foot{margin-top:auto;padding:10px 15px;display:flex;align-items:center;gap:7px;font-size:12px;opacity:.6}
+
+  .sec{display:flex;align-items:center;gap:9px;padding:8px 12px;margin:0 7px 1px;position:relative}
+  .sec .bar{width:3px;height:13px;border-radius:1px;flex:none}
+  .sec .st{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .sec .sc{font-family:var(--mono);font-size:10.5px;opacity:.42}
+  .sec.on{font-weight:600}
+  .mid .sep{height:1px;margin:7px 15px}
+
+  .pg{padding:7px 12px;margin:0 7px 1px;position:relative}
+  .pg .pt{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12.5px}
+  .pg .pm{font-family:var(--mono);font-size:10px;opacity:.42;margin-top:2px}
+  .pg.on .pt{font-weight:600}
+
+  /* 主区 */
+  .main{display:flex;flex-direction:column}
+  .mhead{padding:17px 26px 13px}
+  .mtitle{font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
+  .mmeta{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:11px;opacity:.5}
+  .mmeta .d{width:5px;height:5px;border-radius:50%}
+  .toolbar{display:flex;align-items:center;gap:3px;padding:7px 24px;border-top:1px solid;border-bottom:1px solid}
+  .toolbar .ic{
+    width:24px;height:23px;display:flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:700;border-radius:3px;position:relative;
+  }
+  .toolbar .vsep{width:1px;height:14px;margin:0 5px;background:currentColor;opacity:.18}
+  .body{padding:20px 26px;flex:1;overflow:hidden}
+  .body p{line-height:1.85;font-size:13.5px;max-width:640px}
+  .body p + p{margin-top:9px}
+
+  /* 代码块 */
+  .code{margin-top:16px;border-radius:6px;overflow:hidden;max-width:660px}
+  .code .cbar{display:flex;align-items:center;gap:9px;padding:6px 11px;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em}
+  .code .cbar .lang{text-transform:uppercase;letter-spacing:.13em;font-weight:600}
+  .code .cbar .lines{opacity:.55}
+  .code .cbar .cp{margin-left:auto;display:flex;align-items:center;gap:4px;opacity:.7}
+  .code .cbody{display:flex}
+  .code .gut{padding:9px 7px 9px 10px;text-align:right;font-family:var(--mono);font-size:11.5px;line-height:19px;opacity:.35;user-select:none;min-width:30px}
+  .code pre{padding:9px 12px 9px 8px;font-family:var(--mono);font-size:11.5px;line-height:19px;overflow:hidden;white-space:pre}
+  .k{font-weight:600}.s{}.n{}.c{font-style:italic}.t{}.f{}
+
+  /* 任务 */
+  .tasks{margin-top:16px;display:flex;flex-direction:column;gap:7px;max-width:520px}
+  .task{display:flex;align-items:flex-start;gap:8px;font-size:13px}
+  .task .box{width:13px;height:13px;border-radius:3px;border:1.5px solid;flex:none;margin-top:3px;position:relative}
+  .task.done .box::after{content:'';position:absolute;left:2px;top:3px;width:7px;height:4px;border-left:1.5px solid;border-bottom:1.5px solid;transform:rotate(-45deg)}
+  .task.done .tx{opacity:.45;text-decoration:line-through}
+
+  .notes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:22px;margin-top:16px;padding-top:16px;border-top:1px solid #d9d5cc}
+  .notes h4{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#8a8578;margin-bottom:7px}
+  .notes p{font-size:12.5px;line-height:1.75;color:#4f4b43}
+  .notes ul{list-style:none;font-size:12.5px;line-height:1.85;color:#4f4b43}
+  .notes li::before{content:'— ';opacity:.4}
+
+  /* ============ A · 宣纸 ============ */
+  .v-a .mock{background:#fbf8f1;color:#241f19;box-shadow:0 1px 0 #e2dacb,0 18px 40px -26px rgba(60,45,20,.38)}
+  .v-a .side{background:#f5f0e5}
+  .v-a .mid{background:#f8f4ea}
+  .v-a .div{background:#e3dacb}
+  .v-a .nb{color:#3d372e}
+  .v-a .nb.on{background:#efe7d6;box-shadow:inset 2px 0 0 #b2372b;border-radius:0 4px 4px 0}
+  .v-a .nb .dot{background:#b2372b}
+  .v-a .sec{color:#453e33;border-radius:4px}
+  .v-a .sec.on{background:#b2372b;color:#fbf8f1;border-radius:3px}
+  .v-a .sec.on .sc{opacity:.7}
+  .v-a .sec.on .bar{background:#fbf8f1 !important;opacity:.55}
+  .v-a .mid .sep{background:#e3dacb}
+  .v-a .pg{color:#3d372e;border-radius:4px}
+  .v-a .pg.on{background:#efe7d6}
+  .v-a .mhead{border-bottom:1px double #ded4c2}
+  .v-a .mtitle{font-family:var(--serif);font-weight:600;font-size:24px;letter-spacing:0}
+  .v-a .mmeta .d{background:#b2372b}
+  .v-a .toolbar{border-color:#e5dccb;background:#fdfbf6}
+  .v-a .toolbar .ic{color:#6d6558;font-family:var(--serif);font-weight:600}
+  .v-a .toolbar .ic.on{color:#b2372b;box-shadow:inset 0 -1.5px 0 #b2372b;border-radius:2px}
+  .v-a .body p{font-family:var(--sans);color:#332d25;line-height:1.95}
+  .v-a .body p:first-child::first-letter{font-family:var(--serif);font-size:1.05em}
+  .v-a .code{background:#f3ecdd;border:1px solid #e0d6c3}
+  .v-a .code .cbar{background:#eadfc9;color:#6d6353;border-bottom:1px solid #e0d6c3}
+  .v-a .code .gut{border-right:1px solid #e4dac7}
+  .v-a .code pre{color:#2c2620}
+  .v-a .k{color:#a33c2c}.v-a .s{color:#3f6b52}.v-a .n{color:#8a6320}.v-a .c{color:#a49a88}.v-a .t{color:#5b4a86}.v-a .f{color:#2f5d86}
+  .v-a .task .box{border-color:#b6ab97;border-radius:2px}
+  .v-a .task.done .box{border-color:#b2372b}
+  .v-a .task.done .box::after{border-color:#b2372b}
+  .v-a .side .foot{border-top:1px solid #e3dacb}
+
+  /* ============ B · 工具台 ============ */
+  .v-b .mock{background:#fff;color:#14161a;border:1px solid #d7dae0;font-size:12.5px}
+  .v-b .side{background:#f2f3f5}
+  .v-b .mid{background:#fafbfc}
+  .v-b .div{background:#dfe2e7}
+  .v-b .colhead .t{font-family:var(--mono);letter-spacing:.13em;opacity:.45}
+  .v-b .nb{font-size:12.5px;padding:6px 12px;border-radius:2px}
+  .v-b .nb.on{background:#e6e9ee;box-shadow:inset 2px 0 0 #1f4bff}
+  .v-b .nb .dot{width:4px;height:4px;border-radius:1px;background:#8b93a1}
+  .v-b .nb.on .dot{background:#1f4bff}
+  .v-b .sec{border-radius:2px;padding:7px 12px}
+  .v-b .sec.on{background:#14161a;color:#fff}
+  .v-b .sec.on .bar{opacity:1}
+  .v-b .sec.on .sc{opacity:.6}
+  .v-b .sec .st{font-size:12.5px}
+  .v-b .mid .sep{background:#e6e9ee;margin:6px 15px}
+  .v-b .pg{border-radius:2px}
+  .v-b .pg.on{background:#fff;box-shadow:inset 2.5px 0 0 #14161a,0 0 0 1px #e6e9ee}
+  .v-b .pg .pm{font-size:9.5px;letter-spacing:.04em}
+  .v-b .mhead{padding:15px 24px 11px;border-bottom:1px solid #e6e9ee}
+  .v-b .mtitle{font-size:21px;font-weight:800;letter-spacing:-.03em}
+  .v-b .mmeta{font-family:var(--mono);font-size:10px;letter-spacing:.03em}
+  .v-b .mmeta .d{background:#1f4bff;border-radius:1px}
+  .v-b .toolbar{border-color:#e6e9ee;background:#fcfcfd;padding:6px 22px}
+  .v-b .toolbar .ic{font-family:var(--mono);font-size:10.5px;font-weight:600;border-radius:2px;color:#5d6573}
+  .v-b .toolbar .ic.on{background:#14161a;color:#fff}
+  .v-b .body p{font-size:12.8px;line-height:1.8;color:#2c3038}
+  .v-b .code{border:1px solid #d7dae0;border-radius:3px}
+  .v-b .code .cbar{background:#14161a;color:#c9ced8;padding:5px 10px}
+  .v-b .code .cbar .lang{color:#fff}
+  .v-b .code .cbody{background:#f7f8fa}
+  .v-b .code .gut{background:#eef0f4;border-right:1px solid #e2e5ea;opacity:.5}
+  .v-b .code pre{color:#1b1f26}
+  .v-b .k{color:#c2261b}.v-b .s{color:#0d7a4a}.v-b .n{color:#5b3fd6}.v-b .c{color:#8b93a1}.v-b .t{color:#8a4b00}.v-b .f{color:#1f4bff}
+  .v-b .task .box{border-color:#b9bfc9;border-radius:1px}
+  .v-b .task.done .box{border-color:#1f4bff;background:#1f4bff}
+  .v-b .task.done .box::after{border-color:#fff}
+  .v-b .side .foot{border-top:1px solid #e2e5ea;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em}
+
+  /* ============ C · 夜墨 ============ */
+  .v-c{color-scheme:dark}
+  .v-c .mock{background:#14171c;color:#e9e5de;box-shadow:0 22px 48px -26px rgba(0,0,0,.75)}
+  .v-c .side{background:#0d0f12}
+  .v-c .mid{background:#111419}
+  .v-c .div{background:#22262e}
+  .v-c .colhead .t{opacity:.4}
+  .v-c .nb{color:#cfcac2;border-radius:4px}
+  .v-c .nb.on{background:#1b1f26;box-shadow:inset 2px 0 0 #d98f4e}
+  .v-c .nb .dot{background:#d98f4e}
+  .v-c .nb .n{opacity:.35}
+  .v-c .sec{color:#cfcac2;border-radius:4px}
+  .v-c .sec.on{background:#1b1f26}
+  .v-c .sec.on .st{color:#e9e5de}
+  .v-c .mid .sep{background:#22262e}
+  .v-c .pg{color:#b9b4ac;border-radius:4px}
+  .v-c .pg.on{background:#1b1f26;box-shadow:inset 2px 0 0 #d98f4e}
+  .v-c .pg.on .pt{color:#f2eee7}
+  .v-c .mhead{border-bottom:1px solid #22262e}
+  .v-c .mtitle{font-family:var(--serif);font-weight:600;font-size:24px;letter-spacing:.01em;color:#f5f1ea}
+  .v-c .mmeta{font-size:10.5px;opacity:.42}
+  .v-c .mmeta .d{background:#7f9e6b}
+  .v-c .toolbar{border-color:#22262e;background:#171b21}
+  .v-c .toolbar .ic{color:#8d8981;border-radius:3px}
+  .v-c .toolbar .ic.on{background:#2a2119;color:#e8b57e}
+  .v-c .body p{color:#cfcac2;line-height:2;font-size:13.2px}
+  .v-c .code{background:#1a1e24;border:1px solid #262b33}
+  .v-c .code .cbar{background:#1e232a;color:#9a958d;border-bottom:1px solid #262b33}
+  .v-c .code .gut{background:#171b21;border-right:1px solid #262b33;opacity:.4}
+  .v-c .code pre{color:#dfdad2}
+  .v-c .k{color:#e08a5a}.v-c .s{color:#9cc190}.v-c .n{color:#e5c07b}.v-c .c{color:#6b7280}.v-c .t{color:#c8a2e0}.v-c .f{color:#8ab8e0}
+  .v-c .task .box{border-color:#4a5058;border-radius:3px}
+  .v-c .task.done .box{border-color:#7f9e6b;background:#7f9e6b}
+  .v-c .task.done .box::after{border-color:#14171c}
+  .v-c .side .foot{border-top:1px solid #22262e}
+
+  @media (max-width:1000px){
+    .mock{grid-template-columns:150px 1px 178px 1px 1fr;height:440px}
+    .pick,.notes{grid-template-columns:1fr}
+    .body{padding:16px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="page-head">
+    <div class="eyebrow">MyNotes · UI Directions</div>
+    <h1>三套界面风格，选一个我来落地</h1>
+    <p>同一份内容、同一种三栏结构，只换视觉语言。三套都刻意避开了紫蓝渐变、玻璃拟态、纯黑纯白那一套 AI 味：A 走温暖纸感，B 走冷硬工具感，C 走深色专注。选定后我改 <code>src/styles.css</code> 的全套 token，功能代码零改动。</p>
+  </div>
+
+  <div class="pick">
+    <a href="#v-a">
+      <b>A · 宣纸</b>
+      <span>宋体标题 + 朱红书签，像一本认真做的纸质笔记</span>
+      <div class="sw"><i style="background:#fbf8f1"></i><i style="background:#f5f0e5"></i><i style="background:#b2372b"></i><i style="background:#3f6b52"></i><i style="background:#2c2620"></i></div>
+    </a>
+    <a href="#v-b">
+      <b>B · 工具台</b>
+      <span>等宽元信息 + 硬边框，像专业开发工具</span>
+      <div class="sw"><i style="background:#fff"></i><i style="background:#f2f3f5"></i><i style="background:#14161a"></i><i style="background:#1f4bff"></i><i style="background:#c2261b"></i></div>
+    </a>
+    <a href="#v-c">
+      <b>C · 夜墨</b>
+      <span>三栏三种明度 + 暖铜强调，夜里写字不刺眼</span>
+      <div class="sw"><i style="background:#0d0f12"></i><i style="background:#14171c"></i><i style="background:#1a1e24"></i><i style="background:#d98f4e"></i><i style="background:#7f9e6b"></i></div>
+    </a>
+  </div>
+
+  <!-- ================= A ================= -->
+  <section class="variant v-a" id="v-a">
+    <div class="v-head">
+      <span class="v-tag">方案 A</span>
+      <h2>宣纸</h2>
+      <em>温暖纸感 · 宋体标题 · 朱红书签 · 淡墨语法色</em>
+    </div>
+
+    <div class="mock">
+      <aside class="side">
+        <div class="colhead"><span class="t">笔记本</span><span class="plus"></span></div>
+        <div class="nb on"><span class="dot"></span><span class="nm">我的笔记</span><span class="n">3</span></div>
+        <div class="nb"><span class="dot"></span><span class="nm">代码库</span><span class="n">5</span></div>
+        <div class="nb"><span class="dot"></span><span class="nm">速记</span><span class="n">2</span></div>
+        <div class="foot"><span>回收站</span><span class="n">1</span></div>
+      </aside>
+      <div class="div"></div>
+      <div class="mid">
+        <div class="colhead"><span class="t">分区</span><span class="plus"></span></div>
+        <div class="sec on"><span class="bar" style="background:#b2372b"></span><span class="st">开始</span><span class="sc">1</span></div>
+        <div class="sec"><span class="bar" style="background:#3f6b52"></span><span class="st">代码库</span><span class="sc">4</span></div>
+        <div class="sec"><span class="bar" style="background:#8a6320"></span><span class="st">工作</span><span class="sc">2</span></div>
+        <div class="colhead mini"><span class="t">页面</span><span class="plus"></span></div>
+        <div class="pg on"><div class="pt">线程池参数</div><div class="pm">11:24</div></div>
+        <div class="pg"><div class="pt">常用 SQL</div><div class="pm">昨天</div></div>
+        <div class="pg"><div class="pt">待办清单</div><div class="pm">11月12日</div></div>
+      </div>
+      <div class="div"></div>
+      <div class="main">
+        <div class="mhead">
+          <div class="mtitle">线程池参数</div>
+          <div class="mmeta"><span class="d"></span><span>我的笔记 / 开始 · 修改于 11:24</span></div>
+        </div>
+        <div class="toolbar">
+          <div class="ic">B</div><div class="ic">I</div><div class="ic">U</div>
+          <div class="vsep"></div>
+          <div class="ic on">H1</div><div class="ic">H2</div>
+          <div class="vsep"></div>
+          <div class="ic">•</div><div class="ic">1.</div><div class="ic">☑</div>
+          <div class="vsep"></div>
+          <div class="ic">{}</div><div class="ic">▦</div>
+        </div>
+        <div class="body">
+          <p>核心线程数按 CPU 核数取，阻塞队列别用无界的 —— 无界队列会让 maximumPoolSize 永远不生效。</p>
+          <div class="code">
+            <div class="cbar"><span class="lang">Java</span><span class="lines">7 行</span><span class="cp">⧉ 复制</span></div>
+            <div class="cbody">
+              <div class="gut">1<br>2<br>3<br>4<br>5<br>6<br>7</div>
+              <pre><span class="k">public class</span> <span class="f">ThreadPoolDemo</span> {
+    <span class="k">public static void</span> <span class="f">main</span>(<span class="t">String</span>[] args) {
+        <span class="t">ExecutorService</span> pool = Executors.<span class="f">newFixedThreadPool</span>(<span class="n">4</span>);
+        pool.<span class="f">submit</span>(() -&gt; System.out.<span class="f">println</span>(<span class="s">"task"</span>));
+        pool.<span class="f">shutdown</span>();
+    }
+}</pre>
+            </div>
+          </div>
+          <div class="tasks">
+            <div class="task done"><span class="box"></span><span class="tx">确认队列容量与拒绝策略</span></div>
+            <div class="task"><span class="box"></span><span>补一段压测数据</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div>
+        <h4>字体</h4>
+        <p>标题 思源宋体 / Songti（字重 600，几乎不调字距）；正文 系统黑体，行高 1.95；代码 Cascadia Code 11.5px。</p>
+      </div>
+      <div>
+        <h4>记忆点</h4>
+        <ul>
+          <li>当前分区是「朱红书签」，一眼定位在哪一章</li>
+          <li>双线细分割 + 纸色底，不用卡片和阴影</li>
+          <li>语法高亮用淡墨色系，长看不刺眼</li>
+        </ul>
+      </div>
+      <div>
+        <h4>适合</h4>
+        <p>想把它当"自己的本子"而不是"软件"。写长文、做读书笔记、整理知识点时最舒服。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= B ================= -->
+  <section class="variant v-b" id="v-b">
+    <div class="v-head">
+      <span class="v-tag">方案 B</span>
+      <h2>工具台</h2>
+      <em>极简工业 · 等宽元信息 · 1px 硬边 · 信号蓝唯一强调</em>
+    </div>
+
+    <div class="mock">
+      <aside class="side">
+        <div class="colhead"><span class="t">Notebooks</span><span class="plus"></span></div>
+        <div class="nb on"><span class="dot"></span><span class="nm">我的笔记</span><span class="n">3</span></div>
+        <div class="nb"><span class="dot"></span><span class="nm">代码库</span><span class="n">5</span></div>
+        <div class="nb"><span class="dot"></span><span class="nm">速记</span><span class="n">2</span></div>
+        <div class="foot"><span>TRASH · 1</span></div>
+      </aside>
+      <div class="div"></div>
+      <div class="mid">
+        <div class="colhead"><span class="t">Sections</span><span class="plus"></span></div>
+        <div class="sec on"><span class="bar" style="background:#ff8a3d"></span><span class="st">开始</span><span class="sc">1</span></div>
+        <div class="sec"><span class="bar" style="background:#1f4bff"></span><span class="st">代码库</span><span class="sc">4</span></div>
+        <div class="sec"><span class="bar" style="background:#0d7a4a"></span><span class="st">工作</span><span class="sc">2</span></div>
+        <div class="sep"></div>
+        <div class="colhead mini"><span class="t">Pages</span><span class="plus"></span></div>
+        <div class="pg on"><div class="pt">线程池参数</div><div class="pm">11:24</div></div>
+        <div class="pg"><div class="pt">常用 SQL</div><div class="pm">YESTERDAY</div></div>
+        <div class="pg"><div class="pt">待办清单</div><div class="pm">11-12</div></div>
+      </div>
+      <div class="div"></div>
+      <div class="main">
+        <div class="mhead">
+          <div class="mtitle">线程池参数</div>
+          <div class="mmeta"><span class="d"></span><span>我的笔记 / 开始 · 11:24 · 已保存</span></div>
+        </div>
+        <div class="toolbar">
+          <div class="ic">B</div><div class="ic">I</div><div class="ic">U</div>
+          <div class="vsep"></div>
+          <div class="ic on">H1</div><div class="ic">H2</div>
+          <div class="vsep"></div>
+          <div class="ic">UL</div><div class="ic">OL</div><div class="ic">TSK</div>
+          <div class="vsep"></div>
+          <div class="ic">CB</div><div class="ic">TBL</div>
+        </div>
+        <div class="body">
+          <p>核心线程数按 CPU 核数取，阻塞队列别用无界的 —— 无界队列会让 maximumPoolSize 永远不生效。</p>
+          <div class="code">
+            <div class="cbar"><span class="lang">JAVA</span><span class="lines">7 LINES</span><span class="cp">COPY</span></div>
+            <div class="cbody">
+              <div class="gut">1<br>2<br>3<br>4<br>5<br>6<br>7</div>
+              <pre><span class="k">public class</span> <span class="f">ThreadPoolDemo</span> {
+    <span class="k">public static void</span> <span class="f">main</span>(<span class="t">String</span>[] args) {
+        <span class="t">ExecutorService</span> pool = Executors.<span class="f">newFixedThreadPool</span>(<span class="n">4</span>);
+        pool.<span class="f">submit</span>(() -&gt; System.out.<span class="f">println</span>(<span class="s">"task"</span>));
+        pool.<span class="f">shutdown</span>();
+    }
+}</pre>
+            </div>
+          </div>
+          <div class="tasks">
+            <div class="task done"><span class="box"></span><span class="tx">确认队列容量与拒绝策略</span></div>
+            <div class="task"><span class="box"></span><span>补一段压测数据</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div>
+        <h4>字体</h4>
+        <p>全站系统黑体 + 等宽体做元信息（字数、时间、列标题）。标题 800 字重、字距 -0.03em，密度最高。</p>
+      </div>
+      <div>
+        <h4>记忆点</h4>
+        <ul>
+          <li>代码块黑头 + 浅身，图形对比最强</li>
+          <li>当前分区整块反黑，像工具栏上的选中按钮</li>
+          <li>全站只用一种蓝，其余靠黑白灰分层</li>
+        </ul>
+      </div>
+      <div>
+        <h4>适合</h4>
+        <p>以贴代码为主、追求效率和信息密度，喜欢 IDE 那种"没有多余装饰"的手感。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= C ================= -->
+  <section class="variant v-c" id="v-c">
+    <div class="v-head">
+      <span class="v-tag">方案 C</span>
+      <h2>夜墨</h2>
+      <em>深色专注 · 三栏三种明度 · 暖铜强调 · 苔绿辅助</em>
+    </div>
+
+    <div class="mock">
+      <aside class="side">
+        <div class="colhead"><span class="t">笔记本</span><span class="plus"></span></div>
+        <div class="nb on"><span class="dot"></span><span class="nm">我的笔记</span><span class="n">3</span></div>
+        <div class="nb"><span class="dot"></span><span class="nm">代码库</span><span class="n">5</span></div>
+        <div class="nb"><span class="dot"></span><span class="nm">速记</span><span class="n">2</span></div>
+        <div class="foot"><span>回收站</span><span class="n">1</span></div>
+      </aside>
+      <div class="div"></div>
+      <div class="mid">
+        <div class="colhead"><span class="t">分区</span><span class="plus"></span></div>
+        <div class="sec on"><span class="bar" style="background:#d98f4e"></span><span class="st">开始</span><span class="sc">1</span></div>
+        <div class="sec"><span class="bar" style="background:#7f9e6b"></span><span class="st">代码库</span><span class="sc">4</span></div>
+        <div class="sec"><span class="bar" style="background:#8a7ba8"></span><span class="st">工作</span><span class="sc">2</span></div>
+        <div class="colhead mini"><span class="t">页面</span><span class="plus"></span></div>
+        <div class="pg on"><div class="pt">线程池参数</div><div class="pm">11:24</div></div>
+        <div class="pg"><div class="pt">常用 SQL</div><div class="pm">昨天</div></div>
+        <div class="pg"><div class="pt">待办清单</div><div class="pm">11月12日</div></div>
+      </div>
+      <div class="div"></div>
+      <div class="main">
+        <div class="mhead">
+          <div class="mtitle">线程池参数</div>
+          <div class="mmeta"><span class="d"></span><span>我的笔记 / 开始 · 修改于 11:24</span></div>
+        </div>
+        <div class="toolbar">
+          <div class="ic">B</div><div class="ic">I</div><div class="ic">U</div>
+          <div class="vsep"></div>
+          <div class="ic on">H1</div><div class="ic">H2</div>
+          <div class="vsep"></div>
+          <div class="ic">•</div><div class="ic">1.</div><div class="ic">☑</div>
+          <div class="vsep"></div>
+          <div class="ic">{}</div><div class="ic">▦</div>
+        </div>
+        <div class="body">
+          <p>核心线程数按 CPU 核数取，阻塞队列别用无界的 —— 无界队列会让 maximumPoolSize 永远不生效。</p>
+          <div class="code">
+            <div class="cbar"><span class="lang">Java</span><span class="lines">7 行</span><span class="cp">⧉ 复制</span></div>
+            <div class="cbody">
+              <div class="gut">1<br>2<br>3<br>4<br>5<br>6<br>7</div>
+              <pre><span class="k">public class</span> <span class="f">ThreadPoolDemo</span> {
+    <span class="k">public static void</span> <span class="f">main</span>(<span class="t">String</span>[] args) {
+        <span class="t">ExecutorService</span> pool = Executors.<span class="f">newFixedThreadPool</span>(<span class="n">4</span>);
+        pool.<span class="f">submit</span>(() -&gt; System.out.<span class="f">println</span>(<span class="s">"task"</span>));
+        pool.<span class="f">shutdown</span>();
+    }
+}</pre>
+            </div>
+          </div>
+          <div class="tasks">
+            <div class="task done"><span class="box"></span><span class="tx">确认队列容量与拒绝策略</span></div>
+            <div class="task"><span class="box"></span><span>补一段压测数据</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div>
+        <h4>字体</h4>
+        <p>标题思源宋体（暖白 #f5f1ea），正文系统黑体 13.2px / 行高 2.0，代码字距略松，长时间阅读不累。</p>
+      </div>
+      <div>
+        <h4>记忆点</h4>
+        <ul>
+          <li>三栏三种明度（#0d0f12 / #111419 / #14171c）制造纵深</li>
+          <li>只用一个暖铜色强调，不发光、不霓虹</li>
+          <li>代码块是"暖灰纸"不是纯黑，对比柔和</li>
+        </ul>
+      </div>
+      <div>
+        <h4>适合</h4>
+        <p>常在夜里写东西，或显示器亮度过高眼睛累。日间仍可切浅色，但默认就是深色。</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,29 @@
+# 依赖
+node_modules/
+
+# 构建产物（保留 build/ 下的图标源资源）
+dist/
+build-out/
+*.exe
+
+# 私人笔记数据与备份
+data/
+release/data/
+*.pre-smoke
+
+# 冒烟测试截图与临时产物
+smoke*.png
+scripts/zipcheck/
+scripts/roundtrip.zip
+
+# WorkBuddy 工作区数据
+.workbuddy/
+
+# 临时凭证（切勿提交）
+.git-token
+*token*.tmp
+
+# 系统 / 日志
+.DS_Store
+Thumbs.db
+*.log
