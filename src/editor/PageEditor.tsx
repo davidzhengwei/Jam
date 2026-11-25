@@ -14,14 +14,17 @@ import { CodeBlock } from './CodeBlock'
 import { Toolbar } from './Toolbar'
 import { Outline } from './Outline'
 import { NoteImage } from './NoteImage'
+import { CredentialCard } from './CredentialCard'
 import { MarkdownPane } from './MarkdownPane'
 import type { MdLayout } from './MarkdownPane'
 import type { Editor } from '@tiptap/react'
+import { NodeSelection, TextSelection } from '@tiptap/pm/state'
+import { ObjectFrame } from './ObjectFrame'
 import { sanitizePastedHtml } from '../lib/sanitize'
 import { mdToDocHtml } from '../lib/markdown'
 import { saveAttachment } from '../lib/attachments'
 import { toast } from '../lib/toast'
-import { Columns3, Rows3 } from 'lucide-react'
+import { Columns3, MousePointer2, Rows3 } from 'lucide-react'
 import {
   findTablePosAt,
   getCellInfoAtPos,
@@ -75,6 +78,15 @@ const JamTable = Table.extend({
           return Number.isFinite(value) && value > 0 ? value : null
         },
         renderHTML: (attrs: Record<string, any>) => (attrs.width ? { style: `width:${attrs.width}px` } : {}),
+      },
+      // 手动缩放：null = 自适应；数字为 px（整表高度，随页签正文落盘）
+      height: {
+        default: null,
+        parseHTML: (el: HTMLElement) => {
+          const value = Number.parseInt(el.style.height || '', 10)
+          return Number.isFinite(value) && value > 0 ? value : null
+        },
+        renderHTML: (attrs: Record<string, any>) => (attrs.height ? { style: `height:${attrs.height}px` } : {}),
       },
     }
   },
@@ -172,8 +184,8 @@ export function PageEditor({
   const editorRef = useRef<Editor | null>(null)
   const cellDragRef = useRef<{ tablePos: number; row: number; col: number } | null>(null)
 
-  // 表格悬浮手柄：悬停单元格时在右下角出现「插行 / 插列」快捷按钮
-  const [tableHandle, setTableHandle] = useState<{ top: number; left: number; pos: number } | null>(null)
+  // 表格悬浮手柄：悬停单元格时在右下角出现「选中 / 插行 / 插列」快捷按钮
+  const [tableHandle, setTableHandle] = useState<{ top: number; left: number; pos: number; tablePos: number } | null>(null)
 
   /** Shift+鼠标按下单元格：启动区域选择；移动时由 onTableMouseOver 扩展 */
   const onEditorMouseDown = (e: React.MouseEvent) => {
@@ -229,9 +241,24 @@ export function PageEditor({
       setTableHandle(null)
       return
     }
+    const tablePos = findTablePosAt(editor.state.doc, pos)
+    if (tablePos === null) {
+      setTableHandle(null)
+      return
+    }
     setTableHandle((prev) =>
-      prev && prev.pos === pos && prev.top === top && prev.left === left ? prev : { top, left, pos }
+      prev && prev.pos === pos && prev.top === top && prev.left === left && prev.tablePos === tablePos
+        ? prev
+        : { top, left, pos, tablePos }
     )
+  }
+
+  const runTableSelect = () => {
+    if (!editor || !tableHandle) return
+    if (!editor.state.doc.nodeAt(tableHandle.tablePos)) return
+    editor.view.dispatch(editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, tableHandle.tablePos)))
+    editor.view.focus()
+    setTableHandle(null)
   }
 
   const runTableInsert = (kind: 'row' | 'col') => {
@@ -262,6 +289,7 @@ export function PageEditor({
       }),
       CodeBlock,
       NoteImage,
+      CredentialCard,
     ],
     []
   )
@@ -273,6 +301,24 @@ export function PageEditor({
       autofocus: false,
       editorProps: {
         attributes: { class: 'prose', spellcheck: 'false' },
+        // 单击代码块/表格正文走常规编辑（光标进入内部）；整体选中只通过对象自身的「选中」按钮触发
+        // 双击整体选中的代码块/表格：按点击坐标回到内部编辑（光标落在所点单元格/代码行）
+        handleDOMEvents: {
+          dblclick: (view, event) => {
+            const sel = view.state.selection
+            if (!(sel instanceof NodeSelection)) return false
+            const node = view.state.doc.nodeAt(sel.from)
+            if (!node || (node.type.name !== 'codeBlock' && node.type.name !== 'table')) return false
+            const mouse = event as MouseEvent
+            const at = view.posAtCoords({ left: mouse.clientX, top: mouse.clientY })
+            if (!at) return false
+            const pos = Math.max(0, Math.min(at.pos, view.state.doc.content.size))
+            const near = TextSelection.near(view.state.doc.resolve(pos), 1)
+            view.dispatch(view.state.tr.setSelection(near).scrollIntoView())
+            view.focus()
+            return true
+          },
+        },
         transformPastedHTML: (html) => sanitizePastedHtml(html),
         // 粘贴 / 拖入图片文件：存进 attachments/ 再插入引用
         handlePaste: (_view, event) => {
@@ -292,7 +338,22 @@ export function PageEditor({
         },
         handleKeyDown: (_view, event) => {
           const ed = editorRef.current
-          if (!ed || !event.shiftKey) return false
+          if (!ed) return false
+          // 整体选中的代码块/表格：Delete / Backspace 整块删除
+          if (event.key === 'Delete' || event.key === 'Backspace') {
+            const sel = ed.state.selection
+            if (sel instanceof NodeSelection) {
+              const node = ed.state.doc.nodeAt(sel.from)
+              if (node && (node.type.name === 'codeBlock' || node.type.name === 'table')) {
+                event.preventDefault()
+                const tr = ed.state.tr.delete(sel.from, sel.from + node.nodeSize)
+                tr.setSelection(TextSelection.near(tr.doc.resolve(Math.max(0, sel.from - 1))))
+                ed.view.dispatch(tr.scrollIntoView())
+                return true
+              }
+            }
+          }
+          if (!event.shiftKey) return false
           const arrows: Record<string, [number, number]> = {
             ArrowUp: [-1, 0],
             ArrowDown: [1, 0],
@@ -452,8 +513,17 @@ export function PageEditor({
           </div>
         </div>
         {showOutline && <Outline editor={editor} />}
+        {mode === 'rich' && editor && <ObjectFrame editor={editor} />}
         {tableHandle && mode === 'rich' && (
           <div className="table-hover-bar" style={{ top: tableHandle.top, left: tableHandle.left }}>
+            <button
+              type="button"
+              title="选中整个表格"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={runTableSelect}
+            >
+              <MousePointer2 size={13} /> 选中
+            </button>
             <button
               type="button"
               title="在此行下方插入行"

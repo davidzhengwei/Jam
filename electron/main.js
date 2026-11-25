@@ -346,6 +346,12 @@ function createWindow() {
 
 async function runSmoke(wc) {
   const fsp = require('fs').promises
+  // 冒烟全程会改动真实数据（页签/卡片/拖拽），开始前留存原始 data.json 字节，
+  // 结束时原样写回，确保用户数据不被测试污染（比各步骤各自还原更彻底）。
+  let originalData = null
+  try {
+    originalData = await fsp.readFile(DATA_FILE)
+  } catch (_) {}
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
   const shot = async (name) => {
     const img = await wc.capturePage()
@@ -539,7 +545,8 @@ async function runSmoke(wc) {
   // 空页面：造一个无页签页面并选中，顶部应无该页面页签、编辑区显示空状态
   const emptyPage = await js(`(() => {
     const s = window.__store
-    const sec = s.data.notebooks[0].sections[0]
+    const sec = s.data.notebooks.flatMap((n) => n.sections)[0]
+    if (!sec) return { err: 'no section' }
     const pid = 'pg_empty_smoke'
     sec.pages.push({ id: pid, title: '空页面冒烟', updatedAt: new Date().toISOString(), tabs: [], tags: [], favorite: false })
     s.selectPage(pid)
@@ -1126,6 +1133,273 @@ async function runSmoke(wc) {
   await js(`window.__store && window.__store.flush()`)
   await sleep(600)
 
+  // 12.5c) 对象控制框：整体选中 / 8 向缩放 / 拖拽移动 / 删除 / 双击进入编辑
+  const objectFrameFlow = await js(`(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+    const ed = window.__editor
+    if (!ed) return { err: 'no editor' }
+    const pm = document.querySelector('.ProseMirror')
+    const fire = (el, type, opts) => el.dispatchEvent(new MouseEvent(type, Object.assign({ bubbles: true, button: 0 }, opts)))
+    const key = (el, k) => el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: k }))
+    const pointer = (el, type, opts) => el.dispatchEvent(new PointerEvent(type, Object.assign({ bubbles: true, button: 0 }, opts)))
+    // 关掉上一步遗留的搜索弹窗，避免遮挡
+    const searchMask = document.querySelector('.modal-mask.top')
+    if (searchMask) searchMask.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    await wait(180)
+
+    const selectCode = () => {
+      const btn = [...document.querySelectorAll('.cb-actions .cb-btn')].find((b) => (b.title || '').includes('选中整个代码块'))
+      if (btn) btn.click()
+      return btn ? ed.state.selection.from : -1
+    }
+    const nodeWidthAt = (pos) => {
+      const n = ed.state.doc.nodeAt(pos)
+      return n && n.type.name === 'codeBlock' ? (n.attrs.width || 0) : 0
+    }
+    const codePos = () => {
+      let p = -1
+      ed.state.doc.descendants((node, pos) => { if (p < 0 && node.type.name === 'codeBlock') p = pos })
+      return p
+    }
+    const cbCount = () => {
+      let c = 0
+      ed.state.doc.descendants((node) => { if (node.type.name === 'codeBlock') c++ })
+      return c
+    }
+
+    // 0) 单击代码块正文：不再整体选中（整体选中只走「选中」按钮）
+    const cbEl = document.querySelector('.ProseMirror .cb')
+    if (cbEl) cbEl.scrollIntoView({ block: 'center' })
+    await wait(160)
+    ed.commands.setTextSelection(1)
+    await wait(100)
+    const codeInner = document.querySelector('.ProseMirror .cb .cb-pre code')
+    let plainClickSel = null
+    if (codeInner) {
+      const rr = codeInner.getBoundingClientRect()
+      const px = rr.left + Math.min(20, rr.width / 2), py = rr.top + 6
+      fire(codeInner, 'mousedown', { clientX: px, clientY: py, detail: 1 })
+      fire(codeInner, 'mouseup', { clientX: px, clientY: py, detail: 1 })
+      await wait(150)
+      plainClickSel = !!ed.state.selection.node ? 'NodeSelection' : 'TextSelection'
+    }
+
+    // 1) 点「选中」按钮 -> 代码块整体选中 -> 控制框出现（8 手柄 + 拖拽把手 + 删除按钮）
+    const selectedPos = selectCode()
+    await wait(220)
+    const selAfterClick = ed.state.selection.constructor.name
+    const frame = document.querySelector('.object-frame.of-codeBlock')
+    const frameInfo = frame ? {
+      handles: frame.querySelectorAll('.of-handle').length,
+      hasDrag: !!frame.querySelector('.of-drag'),
+      hasDelete: !!frame.querySelector('.of-delete'),
+    } : null
+
+    // 2) 拖拉右侧手柄 -> 宽度增加
+    const widthBefore = nodeWidthAt(selectedPos)
+    const eh = frame && frame.querySelector('.of-h-e')
+    if (eh) {
+      const hr = eh.getBoundingClientRect()
+      pointer(eh, 'pointerdown', { clientX: hr.left + 5, clientY: hr.top + 5 })
+      pointer(window, 'pointermove', { clientX: hr.left + 85, clientY: hr.top + 5 })
+      pointer(window, 'pointerup', {})
+      await wait(260)
+    }
+    const widthAfter = nodeWidthAt(selectedPos)
+
+    // 3) 拖拽把手 -> 代码块整体移动到文档最前
+    selectCode()
+    await wait(160)
+    const idxBefore = codePos()
+    const drag = document.querySelector('.object-frame .of-drag')
+    if (drag) {
+      const dr = drag.getBoundingClientRect()
+      const sx = dr.left + dr.width / 2, sy = dr.top + dr.height / 2
+      const fy = pm.children[0].getBoundingClientRect().top + 2
+      pointer(drag, 'pointerdown', { clientX: sx, clientY: sy })
+      pointer(window, 'pointermove', { clientX: sx, clientY: fy })
+      await wait(100)
+      pointer(window, 'pointerup', { clientX: sx, clientY: fy })
+      await wait(340)
+    }
+    const idxAfter = codePos()
+
+    // 4) Delete 键整体删除
+    selectCode()
+    await wait(140)
+    const selBeforeDel = ed.state.selection.constructor.name
+    const before = cbCount()
+    key(pm, 'Delete')
+    await wait(260)
+    const after = cbCount()
+    const deleted = after === before - 1
+
+    // 5) 表格悬浮三按钮（选中 / 插行 / 插列）+ 双击进入单元格编辑
+    ed.commands.setTextSelection(1)
+    await wait(120)
+    const td = document.querySelector('.ProseMirror table td, .ProseMirror table th')
+    let tableSel = null, tableFrame = false, dblSel = null
+    let hoverBtns = 0, rowsBefore = 0, rowsAfter = 0, colsBefore = 0, colsAfter = 0
+    if (td) {
+      const tr = td.getBoundingClientRect()
+      const tx = tr.left + 8, ty = tr.top + 8
+      const hover = async () => {
+        const t = document.querySelector('.ProseMirror table td, .ProseMirror table th')
+        if (!t) return null
+        const r = t.getBoundingClientRect()
+        fire(t, 'mouseover', { clientX: r.left + 8, clientY: r.top + 8 })
+        await wait(160)
+        return document.querySelector('.table-hover-bar')
+      }
+      const gridCount = () => {
+        let rows = 0, cols = 0
+        ed.state.doc.descendants((node) => {
+          if (node.type.name === 'table') {
+            rows = node.childCount
+            cols = node.firstChild ? node.firstChild.childCount : 0
+            return false
+          }
+        })
+        return { rows, cols }
+      }
+      fire(td, 'mouseover', { clientX: tx, clientY: ty })
+      await wait(180)
+      const bar = document.querySelector('.table-hover-bar')
+      hoverBtns = bar ? bar.querySelectorAll('button').length : 0
+      const g0 = gridCount()
+      rowsBefore = g0.rows; colsBefore = g0.cols
+
+      // 插行
+      const rowBtn = bar && [...bar.querySelectorAll('button')].find((b) => (b.title || '').includes('插入行'))
+      if (rowBtn) { rowBtn.click(); await wait(180) }
+      const g1 = gridCount()
+      // 插列（悬浮条重建后重新取按钮）
+      const bar2 = await hover()
+      const colBtn = bar2 && [...bar2.querySelectorAll('button')].find((b) => (b.title || '').includes('插入列'))
+      if (colBtn) { colBtn.click(); await wait(180) }
+      const g2 = gridCount()
+      rowsAfter = g2.rows; colsAfter = g2.cols
+
+      // 选中（悬浮条重建后重新取按钮）
+      const bar3 = await hover()
+      const selBtn = bar3 && [...bar3.querySelectorAll('button')].find((b) => (b.title || '').includes('选中整个表格'))
+      if (selBtn) selBtn.click()
+      await wait(200)
+      tableSel = !!ed.state.selection.node ? 'NodeSelection' : 'TextSelection'
+      tableFrame = !!document.querySelector('.object-frame.of-table')
+
+      // 双击进入单元格编辑
+      const td2 = document.querySelector('.ProseMirror table td, .ProseMirror table th')
+      if (td2) {
+        const r2 = td2.getBoundingClientRect()
+        fire(td2, 'mousedown', { clientX: r2.left + 8, clientY: r2.top + 8, detail: 2 })
+        fire(td2, 'dblclick', { clientX: r2.left + 8, clientY: r2.top + 8, detail: 2 })
+        await wait(180)
+        dblSel = !!ed.state.selection.node ? 'NodeSelection' : 'TextSelection'
+      }
+    }
+
+    return {
+      plainClickSel, selAfterClick, selectedPos, frameInfo,
+      widthBefore, widthAfter, resized: widthAfter > widthBefore,
+      idxBefore, idxAfter, moved: idxAfter !== idxBefore,
+      selBeforeDel, deleted,
+      hoverBtns, rowsBefore, rowsAfter, colsBefore, colsAfter,
+      inserted: rowsAfter === rowsBefore + 1 && colsAfter === colsBefore + 1,
+      tableSel, tableFrame, dblSel,
+    }
+  })()`)
+  await shot('smoke-object-frame.png')
+  console.log('[smoke] object-frame:', JSON.stringify(objectFrameFlow))
+  await js(`window.__store && window.__store.flush()`)
+  await sleep(600)
+
+  // 12.5d) 账号密码卡片：工具栏追加 / 字段编辑 / 密码显隐切换 / 图标状态同步
+  const credentialFlow = await js(`(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+    const ed = window.__editor
+    if (!ed) return { err: 'no editor' }
+    const countCards = () => {
+      let c = 0
+      ed.state.doc.descendants((node) => { if (node.type.name === 'credentialCard') c++ })
+      return c
+    }
+    const cardNode = () => {
+      let n = null
+      ed.state.doc.descendants((node) => { if (!n && node.type.name === 'credentialCard') n = node })
+      return n
+    }
+    const setInput = (el, value) => {
+      const setter = Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value').set
+      setter.call(el, value)
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+
+    const before = countCards()
+    const btn = document.querySelector('.toolbar .tb-btn[title="追加账号密码卡片"]')
+    if (!btn) return { err: 'no credential button' }
+    btn.click()
+    await wait(280)
+    const after = countCards()
+    const cardEl = document.querySelector('.ProseMirror .credential-card')
+    const card = cardEl ? {
+      fields: cardEl.querySelectorAll('.cc-input').length,
+      eye: !!cardEl.querySelector('.cc-eye'),
+      initialType: cardEl.querySelector('.cc-password')?.type || null,
+      initialRevealed: cardEl.dataset.revealed,
+      initialEyeLabel: cardEl.querySelector('.cc-eye')?.getAttribute('aria-label') || null,
+      initialPressed: cardEl.querySelector('.cc-eye')?.getAttribute('aria-pressed') || null,
+    } : null
+
+    // 编辑三个字段（原生 setter 触发 React 受控输入）
+    const inputs = cardEl ? [...cardEl.querySelectorAll('.cc-input')] : []
+    if (inputs[0]) { setInput(inputs[0], '测试站点'); await wait(90) }
+    if (inputs[1]) { setInput(inputs[1], 'tester@example.com'); await wait(90) }
+    if (inputs[2]) { setInput(inputs[2], 's3cr3t'); await wait(90) }
+    const saved = cardNode()?.attrs || null
+
+    // 点眼睛 -> 明文 + 图标切换 + 状态同步
+    const eye = cardEl && cardEl.querySelector('.cc-eye')
+    if (eye) eye.click()
+    await wait(180)
+    const revealedCard = document.querySelector('.ProseMirror .credential-card')
+    const revealed = revealedCard ? {
+      type: revealedCard.querySelector('.cc-password')?.type || null,
+      revealed: revealedCard.dataset.revealed,
+      label: revealedCard.querySelector('.cc-eye')?.getAttribute('aria-label') || null,
+      pressed: revealedCard.querySelector('.cc-eye')?.getAttribute('aria-pressed') || null,
+      icon: revealedCard.querySelector('.cc-eye svg')?.getAttribute('class') || null,
+      value: revealedCard.querySelector('.cc-password')?.value || null,
+    } : null
+
+    // 再点眼睛 -> 恢复圆点隐藏 + 图标状态回退
+    const eye2 = revealedCard && revealedCard.querySelector('.cc-eye')
+    if (eye2) eye2.click()
+    await wait(180)
+    const hiddenCard = document.querySelector('.ProseMirror .credential-card')
+    const hidden = hiddenCard ? {
+      type: hiddenCard.querySelector('.cc-password')?.type || null,
+      revealed: hiddenCard.dataset.revealed,
+      label: hiddenCard.querySelector('.cc-eye')?.getAttribute('aria-label') || null,
+      pressed: hiddenCard.querySelector('.cc-eye')?.getAttribute('aria-pressed') || null,
+      icon: hiddenCard.querySelector('.cc-eye svg')?.getAttribute('class') || null,
+    } : null
+
+    if (cardEl) cardEl.scrollIntoView({ block: 'center' })
+    await wait(120)
+    return {
+      added: after === before + 1, before, after, card,
+      saved: saved ? { name: saved.name, account: saved.account, password: saved.password } : null,
+      revealed, hidden,
+      toggledOn: revealed?.type === 'text' && revealed.revealed === 'true' && revealed.pressed === 'true' && (revealed.icon || '').includes('eye-off'),
+      toggledOff: hidden?.type === 'password' && hidden.revealed === 'false' && hidden.pressed === 'false' && (hidden.icon || '').includes('eye') && !(hidden.icon || '').includes('eye-off'),
+    }
+  })()`)
+  await shot('smoke-credential-card.png')
+  console.log('[smoke] credential-card:', JSON.stringify(credentialFlow))
+  await js(`window.__store && window.__store.flush()`)
+  await sleep(500)
+
   // 12.6) 左上角版本徽标 + 更新记录弹窗
   const versionInfo = await js(`(async () => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -1375,7 +1649,186 @@ async function runSmoke(wc) {
   await js(`window.__store && window.__store.flush()`)
   await sleep(600)
 
+  // 15) 拖拽迁移：分区/页面/页签的同级排序与跨容器迁移 + 非法拖拽拦截
+  const dragFlow = await js(`(() => {
+    const s = window.__store
+    const d = s.data
+    // 快照：冒烟结束后把结构原位还原，避免污染用户真实数据
+    window.__dragSnapshot = JSON.stringify(d.notebooks)
+    window.__dragUi = JSON.stringify(d.ui)
+    const findSection = (id) => { for (const nb of d.notebooks) { const i = nb.sections.findIndex((x) => x.id === id); if (i >= 0) return { nb, i, sec: nb.sections[i] } } return null }
+    const findPage = (id) => { for (const nb of d.notebooks) for (const sec of nb.sections) { const i = sec.pages.findIndex((x) => x.id === id); if (i >= 0) return { nb, sec, i, page: sec.pages[i] } } return null }
+    const findTab = (id) => { for (const nb of d.notebooks) for (const sec of nb.sections) for (const p of sec.pages) { const i = p.tabs.findIndex((t) => t.id === id); if (i >= 0) return { nb, sec, page: p, i, tab: p.tabs[i] } } return null }
+    const order = (id) => { const l = findSection(id); return l ? l.nb.sections.map((s) => s.id) : [] }
+    const pageOrder = (sid) => { const l = findSection(sid); return l ? l.sec.pages.map((p) => p.id) : [] }
+    const tabOrder = (pid) => { const l = findPage(pid); return l ? l.page.tabs.map((t) => t.id) : [] }
+    const res = {}
+
+    // 1) 分区同级排序：第一个分区拖到末尾之后
+    const nbs = d.notebooks.filter((n) => n.sections.length >= 2)
+    if (nbs.length) {
+      const nb = nbs[0]
+      const before = nb.sections.map((s) => s.id)
+      const moved = s.moveNode({ type: 'section', id: before[0] }, { kind: 'notebook', id: nb.id, index: before.length })
+      const after = findSection(before[0])
+      res.sectionReorder = { moved, toEnd: !!after && after.i === before.length - 1, sameCount: nb.sections.length === before.length }
+    } else res.sectionReorder = { skip: true }
+
+    // 2) 分区跨笔记本：把某笔记本的第一个分区迁到另一个笔记本
+    if (d.notebooks.length >= 2) {
+      // 至少保留 1 个分区在源笔记本，避免清空导致后续冒烟步骤（依赖有分区）失败
+      const from = d.notebooks.find((n) => n.sections.length >= 2)
+      const to = d.notebooks.find((n) => n.id !== from?.id)
+      if (from && to) {
+        const sid = from.sections[0].id
+        const moved = s.moveNode({ type: 'section', id: sid }, { kind: 'notebook', id: to.id, index: 0 })
+        const loc = findSection(sid)
+        res.sectionCross = { moved, inTarget: !!loc && loc.nb.id === to.id, atHead: !!loc && loc.i === 0 }
+      }
+    } else res.sectionCross = { skip: true }
+
+    // 3) 页面跨分区：找两个分区，各取一个页面A、B，把 A 迁到 B 所在分区
+    {
+      let src = null, dst = null
+      for (const nb of d.notebooks) for (const sec of nb.sections) {
+        if (!src && sec.pages.length >= 1) src = sec
+        else if (src && sec.id !== src.id && !dst && sec.pages.length >= 0) dst = sec
+      }
+      if (src && dst) {
+        const pid = src.pages[0].id
+        const moved = s.moveNode({ type: 'page', id: pid }, { kind: 'section', id: dst.id, index: 0 })
+        const loc = findPage(pid)
+        res.pageCross = { moved, inTarget: !!loc && loc.sec.id === dst.id, atHead: !!loc && loc.i === 0 }
+      } else res.pageCross = { skip: true }
+    }
+
+    // 4) 页签跨页面：找两个各有页签的页面，把 A 的首个页签迁到 B
+    {
+      let pa = null, pb = null
+      for (const nb of d.notebooks) for (const sec of nb.sections) for (const p of sec.pages) {
+        if (!pa && p.tabs.length >= 2) pa = p
+        else if (pa && p.id !== pa.id && !pb) pb = p
+      }
+      if (pa && pb) {
+        const tid = pa.tabs[0].id
+        const moved = s.moveNode({ type: 'tab', id: tid }, { kind: 'page', id: pb.id, index: pb.tabs.length })
+        const loc = findTab(tid)
+        res.tabCross = { moved, inTarget: !!loc && loc.page.id === pb.id, atEnd: !!loc && loc.i === loc.page.tabs.length - 1, keptActive: d.ui.activeTabId === tid }
+      } else res.tabCross = { skip: true }
+    }
+
+    // 5) 页签同页排序：把目标页面的第一个页签拖到末尾
+    {
+      const withTabs = []
+      for (const nb of d.notebooks) for (const sec of nb.sections) for (const p of sec.pages) if (p.tabs.length >= 2) withTabs.push(p)
+      const p = withTabs[0]
+      if (p) {
+        const before = p.tabs.map((t) => t.id)
+        const moved = s.moveNode({ type: 'tab', id: before[0] }, { kind: 'page', id: p.id, index: before.length })
+        const after = tabOrder(p.id)
+        res.tabReorder = { moved, toEnd: after[after.length - 1] === before[0], sameCount: after.length === before.length }
+      } else res.tabReorder = { skip: true }
+    }
+
+    // 6) 非法拖拽：页签拖到笔记本 / 页面拖到笔记本 / 分区拖到页面 —— 全部拦截且数据不变
+    {
+      const nb = d.notebooks[0]
+      const snapshot = JSON.stringify(d.notebooks.map((n) => n.sections.map((s) => [s.id, s.pages.map((p) => [p.id, p.tabs.map((t) => t.id)])])))
+      const anyTab = (() => { for (const n of d.notebooks) for (const sec of n.sections) for (const p of sec.pages) if (p.tabs[0]) return p.tabs[0].id; return null })()
+      const anyPage = (() => { for (const n of d.notebooks) for (const sec of n.sections) if (sec.pages[0]) return sec.pages[0].id; return null })()
+      const anySection = nb?.sections[0]?.id
+      const r1 = s.moveNode({ type: 'tab', id: anyTab }, { kind: 'notebook', id: nb.id, index: 0 })
+      const r2 = s.moveNode({ type: 'page', id: anyPage }, { kind: 'notebook', id: nb.id, index: 0 })
+      const r3 = s.moveNode({ type: 'section', id: anySection }, { kind: 'page', id: anyPage, index: 0 })
+      const after = JSON.stringify(d.notebooks.map((n) => n.sections.map((sec) => [sec.id, sec.pages.map((p) => [p.id, p.tabs.map((t) => t.id)])])))
+      res.illegal = { rejected: r1 === false && r2 === false && r3 === false, unchanged: after === snapshot }
+    }
+
+    return res
+  })()`)
+  console.log('[smoke] drag:', JSON.stringify(dragFlow))
+  await js(`window.__store && window.__store.flush()`)
+  await sleep(600)
+
+  // 15b) DOM 级拖拽：合成 dragstart/dragover/drop，确认事件链真正触发迁移与插入线
+  const dragDom = await js(`(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+    const s = window.__store
+    const tabs = [...document.querySelectorAll('.tab')]
+    if (tabs.length < 2) return { err: 'not enough tabs', count: tabs.length }
+    const src = tabs[0], dst = tabs[1]
+    const aId = src.getAttribute('data-tab-id'), bId = dst.getAttribute('data-tab-id')
+    const d = s.data
+    const locate = (id) => {
+      for (const n of d.notebooks) for (const sec of n.sections) for (const p of sec.pages) {
+        const idx = p.tabs.findIndex((t) => t.id === id)
+        if (idx >= 0) return { p, idx }
+      }
+      return null
+    }
+    const a = locate(aId), b = locate(bId)
+    if (!a || !b) return { err: 'cannot resolve tabs', aId, bId }
+
+    const dt = new DataTransfer()
+    const fire = (el, type, cx, cy) => {
+      const ev = new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt, clientX: cx, clientY: cy })
+      el.dispatchEvent(ev)
+      return ev
+    }
+    const pageBefore = b.p.id
+    const samePageBefore = a.p.id === b.p.id
+    fire(src, 'dragstart', 0, 0)
+    const r = dst.getBoundingClientRect()
+    const over = fire(dst, 'dragover', r.left + 2, r.top + 2)
+    await wait(100)
+    const hintShown = dst.className.includes('is-drop-before') || dst.className.includes('is-drop-after')
+    fire(dst, 'drop', r.left + 2, r.top + 2)
+    await wait(320)
+    fire(src, 'dragend', 0, 0)
+    await wait(120)
+
+    const after = locate(aId)
+    // 插在 b 之前：目标位 = b.idx；若原本同数组且在 b 之前，删除源后修正为 b.idx - 1
+    const expectIdx = Math.max(0, b.idx - (samePageBefore && a.idx < b.idx ? 1 : 0))
+    return {
+      aId, bId, pageBefore, prevented: over.defaultPrevented,
+      hintShown, movedToDstPage: !!after && after.p.id === pageBefore,
+      atExpected: !!after && after.idx === expectIdx, expectIdx,
+      afterIdx: after ? after.idx : null,
+    }
+  })()`)
+  console.log('[smoke] drag-dom:', JSON.stringify(dragDom))
+  // 把拖拽测试期间的结构改动原位还原，避免污染用户数据
+  const dragRestored = await js(`(() => {
+    const s = window.__store
+    const d = s.data
+    const snap = window.__dragSnapshot
+    if (!snap) return false
+    const notebooks = JSON.parse(snap)
+    d.notebooks.length = 0
+    for (const n of notebooks) d.notebooks.push(n)
+    const ui = JSON.parse(window.__dragUi)
+    for (const k of Object.keys(d.ui)) delete d.ui[k]
+    Object.assign(d.ui, ui)
+    // 必须经 mutate 标记 dirty，否则 store.flush() 因 dirtyRef=false 直接跳过写盘
+    s.setUi({})
+    return true
+  })()`)
+  console.log('[smoke] drag-restored:', dragRestored)
+  await js(`window.__store && window.__store.flush()`)
+  await sleep(600)
+
   await sleep(1200)
+  // 冒烟结束：把测试期间对真实数据的所有改动原样写回。
+  // app.exit(0) 是强退且不触发 before-quit 的 flush，因此这里的写回就是磁盘最终状态。
+  if (originalData) {
+    try {
+      await fsp.writeFile(DATA_FILE, originalData)
+      console.log('[smoke] data-restored: true')
+    } catch (e) {
+      console.log('[smoke] data-restored: false', e && e.message)
+    }
+  }
   console.log('[smoke] done')
   app.exit(0)
 }

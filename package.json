@@ -1,7 +1,7 @@
 {
   "name": "jam",
   "productName": "Jam",
-  "version": "2.0.6",
+  "version": "2.0.10",
   "private": true,
   "description": "Jam — 本地笔记与代码片段库",
   "author": "local",

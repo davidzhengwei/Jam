@@ -1,10 +1,22 @@
 import { useState } from 'react'
 import { FileText, History, ListTree, Plus, RotateCcw, Star, Trash2, X } from 'lucide-react'
-import { type Store, visiblePageIds } from '../store'
+import { type Store, locatePage, locateSection, locateTabIndex, visiblePageIds } from '../store'
 import type { Page, Section, TrashItem } from '../types'
 import { SECTION_COLORS } from '../types'
 import type { MenuItem } from './ContextMenu'
 import { formatFullTime, formatTime } from '../lib/utils'
+import {
+  canDrop,
+  dropKey as dropKeyFn,
+  edgeFromEvent,
+  endDrag,
+  getCurrentDrag,
+  readPayload,
+  startDrag,
+  writePayload,
+  type DragPayload,
+  type DropTarget,
+} from '../lib/dnd'
 
 interface Props {
   store: Store
@@ -15,22 +27,14 @@ interface Props {
   onExitTrash: () => void
 }
 
-function parsePayload(e: React.DragEvent): { type: string; id: string } | null {
-  const raw = e.dataTransfer.getData('application/x-jam')
-  if (!raw) return null
-  try {
-    return JSON.parse(raw)
-  } catch (_) {
-    return null
-  }
-}
-
-const dragProps = (type: 'page' | 'section', id: string) => ({
+const dragProps = (type: 'page' | 'section' | 'tab', id: string) => ({
   draggable: true,
   onDragStart: (e: React.DragEvent) => {
-    e.dataTransfer.setData('application/x-jam', JSON.stringify({ type, id }))
-    e.dataTransfer.effectAllowed = 'move'
+    const payload: DragPayload = { type, id }
+    writePayload(e.dataTransfer, payload)
+    startDrag(payload)
   },
+  onDragEnd: () => endDrag(),
 })
 
 export function MiddleColumn({ store, prompt, confirm, openMenu, trashMode, onExitTrash }: Props) {
@@ -201,39 +205,81 @@ export function MiddleColumn({ store, prompt, confirm, openMenu, trashMode, onEx
     openMenu(e.clientX, e.clientY, items)
   }
 
-  const handleSectionDrop = (sec: Section, index: number, e: React.DragEvent) => {
+  /** 分区项：接收 section（同级排序）与 page（迁移到该分区末尾） */
+  const sectionCanAccept = (payload: DragPayload | null): payload is DragPayload =>
+    !!payload && (canDrop(payload, 'notebook') || canDrop(payload, 'section'))
+
+  const pageCanAccept = (payload: DragPayload | null): payload is DragPayload =>
+    !!payload && (canDrop(payload, 'section') || canDrop(payload, 'page'))
+
+  const onSectionDragOver = (e: React.DragEvent, sec: Section) => {
+    const payload = getCurrentDrag()
+    if (!sectionCanAccept(payload)) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'move'
+    setDropKey(dropKeyFn('section', sec.id, edgeFromEvent(e, 'y')))
+  }
+
+  const onPageDragOver = (e: React.DragEvent, page: Page) => {
+    const payload = getCurrentDrag()
+    if (!pageCanAccept(payload)) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'move'
+    setDropKey(dropKeyFn('page', page.id, edgeFromEvent(e, 'y')))
+  }
+
+  const handleSectionDrop = (sec: Section, e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setDropKey(null)
-    const payload = parsePayload(e)
-    if (!payload) return
-    if (payload.type === 'page') {
-      onExitTrash()
-      store.movePage(payload.id, sec.id, sec.pages.length)
-      return
-    }
-    if (payload.type === 'section' && notebook) {
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-      const after = e.clientY > rect.top + rect.height / 2
-      let targetIndex = index + (after ? 1 : 0)
-      const fromIndex = sections.findIndex((s) => s.id === payload.id)
-      if (fromIndex >= 0 && fromIndex < targetIndex) targetIndex -= 1
-      store.moveSection(payload.id, notebook.id, targetIndex)
+    endDrag()
+    const payload = readPayload(e.dataTransfer) || getCurrentDrag()
+    if (!sectionCanAccept(payload)) return
+    onExitTrash()
+    const edge = edgeFromEvent(e, 'y')
+    const d = store.getData()
+    if (payload.type === 'section') {
+      const loc = locateSection(d, sec.id)
+      if (!loc) return
+      store.moveNode(payload, {
+        kind: 'notebook',
+        id: loc.notebook.id,
+        index: loc.index + (edge === 'before' ? 0 : 1),
+      })
+    } else {
+      // 页面落到分区：按前后插到该分区页面数组
+      const loc = locateSection(d, sec.id)
+      if (!loc) return
+      const at = edge === 'before' ? 0 : loc.section.pages.length
+      store.moveNode(payload, { kind: 'section', id: sec.id, index: at })
     }
   }
 
-  const handlePageDrop = (page: Page, index: number, e: React.DragEvent) => {
+  const handlePageDrop = (page: Page, e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setDropKey(null)
-    const payload = parsePayload(e)
-    if (!payload || payload.type !== 'page' || !activeSection) return
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const after = e.clientY > rect.top + rect.height / 2
-    let targetIndex = index + (after ? 1 : 0)
-    const fromIndex = activeSection.pages.findIndex((p) => p.id === payload.id)
-    if (fromIndex >= 0 && fromIndex < targetIndex) targetIndex -= 1
-    store.movePage(payload.id, activeSection.id, targetIndex)
+    endDrag()
+    const payload = readPayload(e.dataTransfer) || getCurrentDrag()
+    if (!pageCanAccept(payload)) return
+    onExitTrash()
+    const edge = edgeFromEvent(e, 'y')
+    const d = store.getData()
+    if (payload.type === 'page') {
+      const loc = locatePage(d, page.id)
+      if (!loc) return
+      store.moveNode(payload, {
+        kind: 'section',
+        id: loc.section.id,
+        index: loc.pageIndex + (edge === 'before' ? 0 : 1),
+      })
+    } else {
+      // 页签落到页面：插到该页面页签开头或末尾
+      const at = edge === 'before' ? 0 : page.tabs.length
+      store.moveNode(payload, { kind: 'page', id: page.id, index: at })
+    }
   }
 
   if (trashMode) {
@@ -339,8 +385,8 @@ export function MiddleColumn({ store, prompt, confirm, openMenu, trashMode, onEx
             key={sec.id}
             {...dragProps('section', sec.id)}
             className={`sec-item${sec.id === activeSectionId ? ' is-active' : ''}${
-              dropKey === `sec-${sec.id}` ? ' is-drop' : ''
-            }`}
+              dropKey === dropKeyFn('section', sec.id, 'before') ? ' is-drop-before' : ''
+            }${dropKey === dropKeyFn('section', sec.id, 'after') ? ' is-drop-after' : ''}`}
             onClick={() => {
               onExitTrash()
               store.selectSection(sec.id)
@@ -350,15 +396,10 @@ export function MiddleColumn({ store, prompt, confirm, openMenu, trashMode, onEx
               if (title) store.renameSection(sec.id, title)
             }}
             onContextMenu={(e) => sectionMenu(sec, e)}
-            onDragOver={(e) => {
-              if (e.dataTransfer.types.includes('application/x-jam')) {
-                e.preventDefault()
-                setDropKey(`sec-${sec.id}`)
-              }
-            }}
-            onDragLeave={() => setDropKey((k) => (k === `sec-${sec.id}` ? null : k))}
-            onDrop={(e) => handleSectionDrop(sec, index, e)}
-            title={`${sec.title}（可拖拽排序）`}
+            onDragOver={(e) => onSectionDragOver(e, sec)}
+            onDragLeave={() => setDropKey((k) => (k && k.startsWith(`section:${sec.id}:`) ? null : k))}
+            onDrop={(e) => handleSectionDrop(sec, e)}
+            title={`${sec.title}（拖拽排序；页面可拖入此分区）`}
           >
             <span className="sec-dot" style={{ background: sec.color }} />
             <span className="sec-title">{sec.title}</span>
@@ -451,8 +492,8 @@ export function MiddleColumn({ store, prompt, confirm, openMenu, trashMode, onEx
               key={page.id}
               {...(inSectionView ? dragProps('page', page.id) : {})}
               className={`page-item${page.id === activePageId ? ' is-active' : ''}${
-                dropKey === `pg-${page.id}` ? ' is-drop' : ''
-              }`}
+                dropKey === dropKeyFn('page', page.id, 'before') ? ' is-drop-before' : ''
+              }${dropKey === dropKeyFn('page', page.id, 'after') ? ' is-drop-after' : ''}`}
               onClick={() => {
                 onExitTrash()
                 // 级联：选中页面 → 顶部只显示该页面的页签（+ 收藏常驻）
@@ -463,18 +504,13 @@ export function MiddleColumn({ store, prompt, confirm, openMenu, trashMode, onEx
                 if (title) store.renamePage(page.id, title)
               }}
               onContextMenu={(e) => pageMenu(page, e)}
-              onDragOver={
+              onDragOver={inSectionView ? (e) => onPageDragOver(e, page) : undefined}
+              onDragLeave={
                 inSectionView
-                  ? (e) => {
-                      if (e.dataTransfer.types.includes('application/x-jam')) {
-                        e.preventDefault()
-                        setDropKey(`pg-${page.id}`)
-                      }
-                    }
+                  ? () => setDropKey((k) => (k && k.startsWith(`page:${page.id}:`) ? null : k))
                   : undefined
               }
-              onDragLeave={inSectionView ? () => setDropKey((k) => (k === `pg-${page.id}` ? null : k)) : undefined}
-              onDrop={inSectionView ? (e) => handlePageDrop(page, index, e) : undefined}
+              onDrop={inSectionView ? (e) => handlePageDrop(page, e) : undefined}
               title={loc ? `${loc.nb} / ${loc.sec}` : page.title}
             >
               <div className="page-title">
