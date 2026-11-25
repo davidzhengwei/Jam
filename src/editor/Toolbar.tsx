@@ -12,6 +12,7 @@ import {
   Heading2,
   Heading3,
   Italic,
+  KeyRound,
   Link2,
   List,
   ListChecks,
@@ -157,6 +158,19 @@ export function Toolbar({ editor, contentWidth = 0, onContentWidth }: Props) {
     base.insertTable({ rows, cols, withHeaderRow: true }).run()
     setTableOpen(false)
     setTableHover(null)
+  }
+
+  /** 在正文末尾追加一张账号密码卡片，并滚动到新卡片 */
+  const insertCredentialCard = () => {
+    const ed = editor
+    const pos = ed.state.doc.content.size
+    ed.chain().focus().insertContentAt(pos, { type: 'credentialCard' }).run()
+    setTimeout(() => {
+      const cards = document.querySelectorAll('.ProseMirror .credential-card')
+      const last = cards[cards.length - 1] as HTMLElement | null
+      last?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      last?.querySelector<HTMLInputElement>('.cc-input')?.focus()
+    }, 40)
   }
 
   const applyLink = () => {
@@ -309,6 +323,9 @@ export function Toolbar({ editor, contentWidth = 0, onContentWidth }: Props) {
           </div>
         )}
       </div>
+      <Btn title="追加账号密码卡片" onClick={insertCredentialCard}>
+        <KeyRound size={16} />
+      </Btn>
       <Btn title="分割线" onClick={() => chain().setHorizontalRule().run()}>
         <Minus size={16} />
       </Btn>

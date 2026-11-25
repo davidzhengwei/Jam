@@ -5,6 +5,16 @@ import type { Store } from '../store'
 import type { Notebook } from '../types'
 import type { MenuItem } from './ContextMenu'
 import { APP_VERSION } from '../lib/changelog'
+import {
+  canDrop,
+  dropKey,
+  edgeFromEvent,
+  getCurrentDrag,
+  endDrag,
+  readPayload,
+  writePayload,
+  type DragPayload,
+} from '../lib/dnd'
 
 interface Props {
   store: Store
@@ -17,20 +27,10 @@ interface Props {
   onOpenChangelog: () => void
 }
 
-function parsePayload(e: React.DragEvent): { type: string; id: string } | null {
-  const raw = e.dataTransfer.getData('application/x-jam')
-  if (!raw) return null
-  try {
-    return JSON.parse(raw)
-  } catch (_) {
-    return null
-  }
-}
-
 export function Sidebar({ store, prompt, confirm, openMenu, onTrash, trashCount, trashActive, onOpenChangelog }: Props) {
   const notebooks = store.data?.notebooks || []
   const activeId = store.data?.ui.activeNotebookId ?? null
-  const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const [hint, setHint] = useState<string | null>(null)
 
   const addNotebook = async () => {
     const title = await prompt({ title: '新建笔记本', value: '新建笔记本', okText: '创建' })
@@ -73,6 +73,26 @@ export function Sidebar({ store, prompt, confirm, openMenu, onTrash, trashCount,
     openMenu(e.clientX, e.clientY, items)
   }
 
+  const onDragOver = (e: React.DragEvent, nb: Notebook) => {
+    const payload = getCurrentDrag()
+    if (!canDrop(payload, 'notebook')) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    const edge = edgeFromEvent(e, 'y')
+    setHint(dropKey('notebook', nb.id, edge))
+  }
+
+  const onDrop = (e: React.DragEvent, nb: Notebook) => {
+    const edge = edgeFromEvent(e, 'y')
+    setHint(null)
+    endDrag()
+    const payload: DragPayload | null = readPayload(e.dataTransfer) || getCurrentDrag()
+    if (!canDrop(payload, 'notebook')) return
+    e.preventDefault()
+    const index = edge === 'before' ? 0 : nb.sections.length
+    store.moveNode(payload!, { kind: 'notebook', id: nb.id, index })
+  }
+
   return (
     <aside className="col col-sidebar">
       <div className="brand-row">
@@ -98,28 +118,19 @@ export function Sidebar({ store, prompt, confirm, openMenu, onTrash, trashCount,
         {notebooks.map((nb) => (
           <div
             key={nb.id}
-            className={`nb-item${nb.id === activeId ? ' is-active' : ''}${dropTarget === nb.id ? ' is-drop' : ''}`}
+            className={`nb-item${nb.id === activeId ? ' is-active' : ''}${
+              hint === dropKey('notebook', nb.id, 'before') ? ' is-drop-before' : ''
+            }${hint === dropKey('notebook', nb.id, 'after') ? ' is-drop-after' : ''}`}
             onClick={() => store.selectNotebook(nb.id)}
             onDoubleClick={async () => {
               const title = await prompt({ title: '重命名笔记本', value: nb.title })
               if (title) store.renameNotebook(nb.id, title)
             }}
             onContextMenu={(e) => notebookMenu(nb, e)}
-            onDragOver={(e) => {
-              if (e.dataTransfer.types.includes('application/x-jam')) {
-                e.preventDefault()
-                setDropTarget(nb.id)
-              }
-            }}
-            onDragLeave={() => setDropTarget((cur) => (cur === nb.id ? null : cur))}
-            onDrop={(e) => {
-              setDropTarget(null)
-              const payload = parsePayload(e)
-              if (!payload || payload.type !== 'section') return
-              e.preventDefault()
-              store.moveSection(payload.id, nb.id, nb.sections.length)
-            }}
-            title={nb.title}
+            onDragOver={(e) => onDragOver(e, nb)}
+            onDragLeave={() => setHint((cur) => (cur && cur.startsWith(`notebook:${nb.id}:`) ? null : cur))}
+            onDrop={(e) => onDrop(e, nb)}
+            title={`${nb.title}（分区可拖到此处调整顺序或迁移）`}
           >
             <Layers size={14} className="nb-icon" />
             <span className="nb-text">{nb.title}</span>

@@ -59,7 +59,7 @@ function main() {
   }
 
   // 找到生成的便携 exe
-  const exeName = 'Jam-2.0.6-portable.exe'
+  const exeName = 'Jam-2.0.10-portable.exe'
   const src = path.join(tmpDir, exeName)
   const found = fs.existsSync(src)
     ? src

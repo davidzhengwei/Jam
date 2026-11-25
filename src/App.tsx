@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileCode2, FilePlus2, FolderOpen, Moon, PanelRight, Plus, Search, Settings, Star, Sun, X } from 'lucide-react'
-import { locatePage, locateTab, useStore, visibleTabs } from './store'
+import { locatePage, locateTab, locateTabIndex, useStore, visibleTabs } from './store'
 import { storage } from './lib/storage'
 import { formatFullTime, formatTime } from './lib/utils'
 import { toast } from './lib/toast'
@@ -16,6 +16,17 @@ import { Toasts } from './components/Toasts'
 import { useDialogs } from './components/Dialogs'
 import { ChangelogDialog } from './components/ChangelogDialog'
 import { PageEditor } from './editor/PageEditor'
+import {
+  canDrop,
+  dropKey as dndDropKey,
+  edgeFromEvent,
+  endDrag,
+  getCurrentDrag,
+  readPayload,
+  startDrag,
+  writePayload,
+  type DragPayload,
+} from './lib/dnd'
 
 /** 导出一个页签（页签是唯一正文载体）。具名函数便于右键菜单引用。 */
 function voidExportTab(tab: Tab, kind: 'md' | 'html') {
@@ -35,6 +46,8 @@ export default function App() {
   const [sbW, setSbW] = useState(200)
   const [lw, setLw] = useState(240)
   const [dragging, setDragging] = useState<'sidebar' | 'list' | null>(null)
+  const [tabHint, setTabHint] = useState<string | null>(null)
+  const [tabDragId, setTabDragId] = useState<string | null>(null)
   const widths = useRef({ sb: 200, lw: 240 })
   const nonce = useRef(0)
 
@@ -53,6 +66,36 @@ export default function App() {
   const tabLocs = visibleTabs(data)
   const activeTabId = data?.ui.activeTabId || null
   const activePageId = data?.ui.activePageId || null
+
+  // 页签拖拽：同一页面内排序，或迁到另一个页面（含跨分区/跨笔记本的收藏常驻页签）
+  const onTabDragStart = (e: React.DragEvent, id: string) => {
+    const payload: DragPayload = { type: 'tab', id }
+    writePayload(e.dataTransfer, payload)
+    startDrag(payload)
+    setTabDragId(id)
+  }
+  const onTabDragOver = (e: React.DragEvent, id: string) => {
+    const payload = getCurrentDrag()
+    if (!canDrop(payload, 'page')) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'move'
+    setTabHint(dndDropKey('page', id, edgeFromEvent(e, 'x')))
+  }
+  const onTabDrop = (e: React.DragEvent, targetTabId: string) => {
+    setTabHint(null)
+    setTabDragId(null)
+    endDrag()
+    const payload = readPayload(e.dataTransfer) || getCurrentDrag()
+    if (!canDrop(payload, 'page')) return
+    e.preventDefault()
+    const targetLoc = locateTab(data, targetTabId)
+    if (!targetLoc) return
+    const idx = locateTabIndex(data, targetTabId)
+    const to = idx + (edgeFromEvent(e, 'x') === 'before' ? 0 : 1)
+    store.moveNode(payload!, { kind: 'page', id: targetLoc.page.id, index: to })
+  }
+
   const outlineOpen = data?.ui.outlineOpen !== false
   const mdLayout = data?.ui.mdLayout || 'split'
   const contentWidth = data?.ui.contentWidth || 0
@@ -234,9 +277,20 @@ export default function App() {
               <div
                 key={tabId}
                 role="tab"
+                data-tab-id={tabId}
                 aria-selected={active}
-                className={`tab${active ? ' is-active' : ''}`}
-                title={`${loc.notebook.title} / ${loc.section.title} / ${loc.page.title}`}
+                className={`tab${active ? ' is-active' : ''}${
+                  tabDragId === tabId ? ' is-dragging' : ''
+                }${
+                  tabHint === dndDropKey('page', tabId, 'before') ? ' is-drop-before' : ''
+                }${tabHint === dndDropKey('page', tabId, 'after') ? ' is-drop-after' : ''}`}
+                draggable
+                onDragStart={(e) => onTabDragStart(e, tabId)}
+                onDragEnd={() => { setTabDragId(null); setTabHint(null); endDrag() }}
+                onDragOver={(e) => onTabDragOver(e, tabId)}
+                onDragLeave={() => setTabHint((k) => (k && k.startsWith(`page:${tabId}:`) ? null : k))}
+                onDrop={(e) => onTabDrop(e, tabId)}
+                title={`${loc.notebook.title} / ${loc.section.title} / ${loc.page.title}（拖拽可排序或迁到其他页面）`}
                 onClick={() => {
                   setTrashMode(false)
                   store.activateTab(tabId)

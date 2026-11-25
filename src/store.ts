@@ -6,6 +6,8 @@ import { pageBodyToMarkdown } from './lib/export'
 import { nowIso, uid } from './lib/utils'
 import { toast } from './lib/toast'
 import { SECTION_COLORS } from './types'
+import type { DragPayload, DropTarget } from './lib/dnd'
+import { PARENT_KIND } from './lib/dnd'
 
 export type SaveState = 'idle' | 'saved' | 'saving' | 'error'
 
@@ -389,6 +391,16 @@ export function locateTab(data: Data | null, tabId: string | null): TabLoc | nul
     if (tab) return { tab, page, section: sec, notebook: nb }
   }
   return null
+}
+
+/** 页签在所属页面 tabs[] 中的索引（拖拽排序用） */
+export function locateTabIndex(data: Data | null, tabId: string | null): number {
+  if (!data || !tabId) return -1
+  for (const nb of data.notebooks) for (const sec of nb.sections) for (const page of sec.pages) {
+    const idx = page.tabs.findIndex((t) => t.id === tabId)
+    if (idx >= 0) return idx
+  }
+  return -1
 }
 
 // ------------------------------------------------------------------
@@ -966,6 +978,98 @@ export function useStore() {
           d.ui.activeNotebookId = target.notebook.id
           d.ui.activeSectionId = targetSectionId
         }),
+
+      /**
+       * 统一拖拽迁移：分区 / 页面 / 页签共用，先校验合法性再原子搬迁。
+       * target.index 是「删除源之前」的视觉插入位；同数组搬迁时自动修正偏移。
+       * 返回是否真正发生了移动，非法拖拽一律返回 false 且保持原状态。
+       */
+      moveNode: (payload: DragPayload, target: DropTarget): boolean => {
+        if (!payload || !payload.id || PARENT_KIND[payload.type] !== target.kind) return false
+        let moved = false
+        withData((d) => {
+          // ---- 定位源数组 / 源索引 ----
+          let src: any[] | null = null
+          let from = -1
+          let node: any = null
+          if (payload.type === 'section') {
+            const loc = locateSection(d, payload.id)
+            if (loc) {
+              src = loc.notebook.sections
+              from = loc.index
+              node = loc.section
+            }
+          } else if (payload.type === 'page') {
+            const loc = locatePage(d, payload.id)
+            if (loc) {
+              src = loc.section.pages
+              from = loc.pageIndex
+              node = loc.page
+            }
+          } else {
+            const loc = locateTab(d, payload.id)
+            const idx = locateTabIndex(d, payload.id)
+            if (loc && idx >= 0) {
+              src = loc.page.tabs
+              from = idx
+              node = loc.tab
+            }
+          }
+          if (!src || from < 0 || !node) return
+
+          // ---- 定位目标容器数组，并解析目标笔记本/分区/页面用于同步浏览上下文 ----
+          let dst: any[] | null = null
+          let targetNbId: string | null = null
+          let targetSecId: string | null = null
+          let targetPageId: string | null = null
+          if (target.kind === 'notebook') {
+            const nb = d.notebooks.find((n) => n.id === target.id)
+            if (nb) {
+              dst = nb.sections
+              targetNbId = nb.id
+            }
+          } else if (target.kind === 'section') {
+            const loc = locateSection(d, target.id)
+            if (loc) {
+              dst = loc.section.pages
+              targetNbId = loc.notebook.id
+              targetSecId = loc.section.id
+            }
+          } else {
+            const loc = locatePage(d, target.id)
+            if (loc) {
+              dst = loc.page.tabs
+              targetNbId = loc.notebook.id
+              targetSecId = loc.section.id
+              targetPageId = loc.page.id
+            }
+          }
+          if (!dst) return
+
+          // ---- 索引修正：同数组内前移，删除源后目标位减一 ----
+          let to = Math.max(0, Math.min(target.index, dst.length))
+          if (src === dst && from < to) to -= 1
+          // 落在原位：无变化，直接返回
+          if (src === dst && from === to) return
+
+          src.splice(from, 1)
+          dst.splice(Math.max(0, Math.min(to, dst.length)), 0, node)
+          moved = true
+
+          // ---- 浏览上下文跟随到目标层级，保证迁走后仍可见 ----
+          if (targetNbId) d.ui.activeNotebookId = targetNbId
+          if (targetSecId) d.ui.activeSectionId = targetSecId
+          if (targetPageId) d.ui.activePageId = targetPageId
+          // 被移动的若是页签，保持它激活；页签/页面时间随迁移更新
+          if (payload.type === 'tab') {
+            d.ui.activeTabId = payload.id
+            node.updatedAt = nowIso()
+          } else if (payload.type === 'page') {
+            node.updatedAt = nowIso()
+          }
+        })
+        return moved
+      },
 
       // ---- 正文写入：只接受 tabId（前三层无正文入口）----
       updateContent: (tabId: string, content: Doc) => {

@@ -347,8 +347,86 @@ textarea {
   box-shadow: inset 2px 0 0 var(--accent);
   font-weight: 600;
 }
-.nb-item.is-drop {
-  box-shadow: inset 0 0 0 2px var(--accent);
+/* ---------- 拖拽：目标高亮 + 插入位置提示线 ---------- */
+.nb-item.is-drop-before,
+.nb-item.is-drop-after,
+.sec-item.is-drop-before,
+.sec-item.is-drop-after,
+.page-item.is-drop-before,
+.page-item.is-drop-after,
+.tab.is-drop-before,
+.tab.is-drop-after {
+  position: relative;
+}
+.nb-item.is-drop-before::before,
+.nb-item.is-drop-after::after,
+.sec-item.is-drop-before::before,
+.sec-item.is-drop-after::after,
+.page-item.is-drop-before::before,
+.page-item.is-drop-after::after,
+.tab.is-drop-before::before,
+.tab.is-drop-after::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--bg);
+  z-index: 5;
+  pointer-events: none;
+}
+.nb-item.is-drop-before::before,
+.nb-item.is-drop-after::after,
+.sec-item.is-drop-before::before,
+.sec-item.is-drop-after::after,
+.page-item.is-drop-before::before,
+.page-item.is-drop-after::after {
+  left: 6px;
+  right: 6px;
+}
+.nb-item.is-drop-before::before,
+.sec-item.is-drop-before::before,
+.page-item.is-drop-before::before {
+  top: -1px;
+}
+.nb-item.is-drop-after::after,
+.sec-item.is-drop-after::after,
+.page-item.is-drop-after::after {
+  bottom: -1px;
+}
+.tab.is-drop-before::before {
+  left: 1px;
+  top: 0;
+  bottom: 4px;
+  width: 2px;
+  height: auto;
+  right: auto;
+}
+.tab.is-drop-after::after {
+  right: 1px;
+  top: 0;
+  bottom: 4px;
+  width: 2px;
+  height: auto;
+  left: auto;
+}
+.nb-item.is-drop-before,
+.nb-item.is-drop-after,
+.sec-item.is-drop-before,
+.sec-item.is-drop-after,
+.page-item.is-drop-before,
+.page-item.is-drop-after,
+.tab.is-drop-before,
+.tab.is-drop-after {
+  background: var(--accent-soft);
+}
+.tab.is-dragging {
+  opacity: 0.45;
+}
+body.jam-dragging {
+  cursor: grabbing !important;
 }
 .nb-icon {
   color: var(--text-dim);
@@ -1369,6 +1447,234 @@ body.jam-cell-selecting * {
 }
 .ProseMirror-gapcursor::after {
   border-top-color: var(--text);
+}
+
+/* ---------- 对象控制框（代码块 / 表格：PPT 式整体选中与缩放） ---------- */
+.object-frame {
+  position: absolute;
+  z-index: 40;
+  pointer-events: none;
+  border-radius: 7px;
+}
+.object-frame .of-outline {
+  position: absolute;
+  inset: -3px;
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+  pointer-events: none;
+}
+.object-frame .of-drag {
+  position: absolute;
+  top: -25px;
+  left: -3px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 5px 5px 0 0;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  cursor: grab;
+  pointer-events: auto;
+  user-select: none;
+  touch-action: none;
+}
+.object-frame .of-drag:active { cursor: grabbing; }
+.object-frame .of-tools {
+  position: absolute;
+  top: -25px;
+  right: -3px;
+  display: flex;
+  align-items: center;
+  height: 22px;
+  pointer-events: auto;
+}
+.object-frame .of-tools button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 1;
+}
+.object-frame .of-tools .of-reset { border-radius: 0; }
+.object-frame .of-tools .of-delete {
+  border-radius: 0 5px 0 0;
+}
+.object-frame .of-tools button:first-child { border-left: none; }
+.object-frame .of-tools button:hover { filter: brightness(1.12); }
+.object-frame .of-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--bg);
+  border: 2px solid var(--accent);
+  border-radius: 2px;
+  pointer-events: auto;
+  touch-action: none;
+}
+.of-h-nw { top: -7px; left: -7px; cursor: nwse-resize; }
+.of-h-n { top: -7px; left: calc(50% - 5px); cursor: ns-resize; }
+.of-h-ne { top: -7px; right: -7px; cursor: nesw-resize; }
+.of-h-e { top: calc(50% - 5px); right: -7px; cursor: ew-resize; }
+.of-h-se { bottom: -7px; right: -7px; cursor: nwse-resize; }
+.of-h-s { bottom: -7px; left: calc(50% - 5px); cursor: ns-resize; }
+.of-h-sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
+.of-h-w { top: calc(50% - 5px); left: -7px; cursor: ew-resize; }
+.of-drop-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 2px dashed var(--accent);
+  z-index: 45;
+  pointer-events: none;
+}
+.object-frame .of-handle:hover { background: var(--accent); }
+body.jam-object-resizing,
+body.jam-object-resizing * { cursor: default !important; }
+body.jam-object-dragging,
+body.jam-object-dragging * { cursor: grabbing !important; }
+
+/* 整体选中时隐藏代码块自带的右下角手柄，避免与控制框重叠 */
+.cb.is-node-selected .cb-resize-handle { display: none; }
+
+/* ---------- 账号密码卡片（与表格同构的纸面记录块） ---------- */
+.credential-card {
+  margin: 0.9em 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-mid);
+  overflow: hidden;
+}
+.credential-card.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.cc-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  background: var(--code-head);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.cc-mark {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+}
+.cc-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.cc-delete {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.cc-delete:hover {
+  border-color: var(--border);
+  background: var(--bg-hover);
+  color: var(--danger);
+}
+.cc-body {
+  display: grid;
+  gap: 7px;
+  padding: 10px 12px 12px;
+}
+.cc-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.cc-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.cc-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui, inherit);
+  font-size: 13px;
+  line-height: 1.5;
+  outline: none;
+}
+.cc-input::placeholder {
+  color: var(--text-faint);
+}
+.cc-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.cc-secret {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+.cc-password {
+  padding-right: 36px;
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+}
+.cc-eye {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.cc-eye:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+.cc-eye:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.credential-card[data-revealed='true'] .cc-secret .cc-input {
+  border-color: var(--accent);
 }
 
 /* ---------- 图片 ---------- */
